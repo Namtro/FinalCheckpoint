@@ -41,7 +41,7 @@ void blurImage(const Image& sourceImage, Image& destImage, int radius) {
             p[0] = sumR / elements;
             p[1] = sumG / elements;
             p[2] = sumB / elements;
-            p[3] = 255; // Fully opaque
+            p[3] = 255;
         }
     }
     destImage.create(size.x, size.y, &tempBuffer[0]);
@@ -51,7 +51,7 @@ void handleInput(atomic<int>& blurRadius, const string& correctAnswer, atomic<bo
     string guess;
     while (!gameOver) {
         cout << "Guess the Boilermaker: ";
-        getline(cin, guess);  // Use getline to read the full line including spaces
+        getline(cin, guess);
         if (guess == correctAnswer) {
             cout << "Congratulations! You guessed right!" << endl;
             gameOver = true;
@@ -103,7 +103,7 @@ int main() {
     }
 
     gameOver = true;
-    inputThread.join(); // Make sure to join the thread on exit
+    inputThread.join();
 
     return 0;
 }
