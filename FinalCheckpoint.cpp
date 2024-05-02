@@ -3,81 +3,107 @@
 
 #include <SFML/Graphics.hpp>
 #include <iostream>
+#include <vector>
+#include <thread>
+#include <atomic>
 
 using namespace sf;
 using namespace std;
 
-void blurImage(Image& image, int blurLevel) {
-    if (blurLevel < 1) return;
+void blurImage(const Image& sourceImage, Image& destImage, int radius) {
+    if (radius < 1) {
+        destImage = sourceImage;
+        return;
+    }
+    Vector2u size = sourceImage.getSize();
+    vector<Uint8> tempBuffer(size.x * size.y * 4);
+    const Uint8* originalPixels = sourceImage.getPixelsPtr();
 
-    Image original = image;
-    Vector2u size = image.getSize();
+    int diameter = radius * 2 + 1;
+    int elements = diameter * diameter;
+
     for (unsigned int y = 0; y < size.y; ++y) {
         for (unsigned int x = 0; x < size.x; ++x) {
-            int r = 0, g = 0, b = 0;
-            int count = 0;
-            for (int ky = -blurLevel; ky <= blurLevel; ++ky) {
-                for (int kx = -blurLevel; kx <= blurLevel; ++kx) {
-                    int nx = x + kx;
-                    int ny = y + ky;
+            int sumR = 0, sumG = 0, sumB = 0;
+            for (int dy = -radius; dy <= radius; ++dy) {
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    int nx = x + dx;
+                    int ny = y + dy;
                     if (nx >= 0 && nx < size.x && ny >= 0 && ny < size.y) {
-                        Color c = original.getPixel(nx, ny);
-                        r += c.r;
-                        g += c.g;
-                        b += c.b;
-                        ++count;
+                        const Uint8* p = originalPixels + ((ny * size.x + nx) * 4);
+                        sumR += p[0];
+                        sumG += p[1];
+                        sumB += p[2];
                     }
                 }
             }
-            image.setPixel(x, y, Color(r / count, g / count, b / count));
+            Uint8* p = &tempBuffer[(y * size.x + x) * 4];
+            p[0] = sumR / elements;
+            p[1] = sumG / elements;
+            p[2] = sumB / elements;
+            p[3] = 255; // Fully opaque
+        }
+    }
+    destImage.create(size.x, size.y, &tempBuffer[0]);
+}
+
+void handleInput(atomic<int>& blurRadius, const string& correctAnswer, atomic<bool>& gameOver) {
+    string guess;
+    while (!gameOver) {
+        cout << "Guess the Boilermaker: ";
+        getline(cin, guess);  // Use getline to read the full line including spaces
+        if (guess == correctAnswer) {
+            cout << "Congratulations! You guessed right!" << endl;
+            gameOver = true;
+        }
+        else {
+            cout << "Wrong guess. Try again!" << endl;
+            blurRadius = max(blurRadius.load() - 5, 1);
         }
     }
 }
 
 int main() {
     string imageFile = "D://spring 2024/programming/FinalCheckpoint/images/calebfurst.jpg";
-    Texture texture;
-    if (!texture.loadFromFile(imageFile)) {
+    string correctAnswer = "caleb furst";
+    atomic<int> blurRadius(15);
+    atomic<bool> gameOver(false);
+
+    Image originalImage;
+    if (!originalImage.loadFromFile(imageFile)) {
         cout << "Couldn't load image" << endl;
         return -1;
     }
 
-    Image image = texture.copyToImage();
-    blurImage(image, 10);
+    Image blurredImage = originalImage;
+    blurImage(originalImage, blurredImage, blurRadius);
 
-    texture.loadFromImage(image);
+    Texture texture;
+    texture.loadFromImage(blurredImage);
     Sprite sprite;
     sprite.setTexture(texture);
 
-    RenderWindow window(VideoMode(image.getSize().x, image.getSize().y), "Image Guessing Game");
-    string guess;
-    int blurLevel = 10;
+    RenderWindow window(VideoMode(originalImage.getSize().x, originalImage.getSize().y), "Who's that Boilermaker?!");
+
+    thread inputThread(handleInput, ref(blurRadius), cref(correctAnswer), ref(gameOver));
+
     while (window.isOpen()) {
         Event event;
         while (window.pollEvent(event)) {
-            if (event.type == Event::Closed)
-                window.close();
+            if (event.type == Event::Closed) window.close();
         }
 
-        if (blurLevel > 0) {
-            cout << "Guess the Boilermaker (first and last name, please): ";
-            cin >> guess;
-            if (guess == "caleb furst") {
-                cout << "Correct!" << endl;
-                break;
-            }
-            else {
-                blurLevel--;
-                blurImage(image, blurLevel);
-                texture.loadFromImage(image);
-                sprite.setTexture(texture);
-            }
-        }
+        blurImage(originalImage, blurredImage, blurRadius);
+        texture.loadFromImage(blurredImage);
+        sprite.setTexture(texture);
 
         window.clear();
         window.draw(sprite);
         window.display();
     }
+
+    gameOver = true;
+    inputThread.join(); // Make sure to join the thread on exit
 
     return 0;
 }
